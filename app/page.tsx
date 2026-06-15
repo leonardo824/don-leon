@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { Entry, Message } from '@/lib/supabase'
@@ -68,7 +68,6 @@ export default function Home() {
   }, [entries])
 
   function drawRoute(map: mapboxgl.Map, entries: Entry[]) {
-    // Remove existing markers
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
 
@@ -92,20 +91,41 @@ export default function Home() {
 
     sorted.forEach((entry, i) => {
       const isLast = i === sorted.length - 1
-      const el = document.createElement('div')
-      el.style.cssText = `width:${isLast?'22px':'13px'};height:${isLast?'22px':'13px'};border-radius:50%;background:${isLast?'#4ade80':'#c8863a'};border:2px solid rgba(255,255,255,0.7);cursor:pointer;box-shadow:0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'};transition:transform 0.15s;`
-      el.title = entry.title
+      const size = isLast ? 22 : 13
 
-      el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.5)' })
-      el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)' })
-      el.addEventListener('click', (e) => {
+      // Wrapper que Mapbox mueve — no aplicar transform aquí
+      const wrapper = document.createElement('div')
+      wrapper.style.cssText = `width:${size}px;height:${size}px;cursor:pointer;`
+
+      // Dot interior — aquí sí aplicamos el scale con transform-origin centrado
+      const dot = document.createElement('div')
+      dot.style.cssText = `
+        width:${size}px;
+        height:${size}px;
+        border-radius:50%;
+        background:${isLast?'#4ade80':'#c8863a'};
+        border:2px solid rgba(255,255,255,0.7);
+        box-shadow:0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'};
+        transform-origin:center center;
+        transition:transform 0.15s, box-shadow 0.15s;
+      `
+      wrapper.appendChild(dot)
+
+      wrapper.addEventListener('mouseenter', () => {
+        dot.style.transform = 'scale(1.6)'
+        dot.style.boxShadow = `0 0 ${isLast?'20px':'12px'} ${isLast?'#4ade80':'#c8863a'}`
+      })
+      wrapper.addEventListener('mouseleave', () => {
+        dot.style.transform = 'scale(1)'
+        dot.style.boxShadow = `0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'}`
+      })
+      wrapper.addEventListener('click', (e) => {
         e.stopPropagation()
-        // Find the entry directly from the ref
         const found = entriesRef.current.find(en => en.id === entry.id)
         if (found) setSelectedEntry(found)
       })
 
-      const marker = new mapboxgl.Marker({ element: el })
+      const marker = new mapboxgl.Marker({ element: wrapper, anchor: 'center' })
         .setLngLat([entry.lng, entry.lat])
         .addTo(map)
 
@@ -136,7 +156,6 @@ export default function Home() {
   return (
     <div style={{ minHeight:'100vh', background:'#0a1628', fontFamily:'Inter,sans-serif', color:'#f0e6c8', display:'flex', flexDirection:'column' }}>
 
-      {/* MODAL */}
       {selectedEntry && (
         <div onClick={() => setSelectedEntry(null)}
           style={{ position:'fixed', inset:0, background:'rgba(4,10,22,0.88)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(5px)', padding:'20px' }}>
@@ -146,7 +165,7 @@ export default function Home() {
               style={{ position:'absolute', top:'16px', right:'18px', background:'transparent', border:'none', color:'#a8c4e0', fontSize:'1.4rem', cursor:'pointer', lineHeight:1 }}>✕</button>
             <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.14em', color:'#a8c4e0', marginBottom:'6px' }}>Día {selectedEntry.day_number} del viaje</div>
             <div style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.65rem', fontWeight:700, color:'#f0e6c8', marginBottom:'8px', lineHeight:1.25 }}>{selectedEntry.title}</div>
-            <div style={{ display:'flex', gap:'12px', marginBottom:'22px', flexWrap:'wrap', alignItems:'center' }}>
+            <div style={{ display:'flex', gap:'12px', marginBottom:'22px', flexWrap:'wrap' }}>
               {selectedEntry.location_name && <span style={{ fontSize:'0.72rem', color:'#c8863a' }}>📍 {selectedEntry.location_name}</span>}
               <span style={{ fontSize:'0.68rem', color:'#a8c4e0', fontFamily:'monospace' }}>{format(new Date(selectedEntry.created_at), "d 'de' MMMM yyyy", { locale: es })}</span>
             </div>
@@ -174,16 +193,13 @@ export default function Home() {
                 </div>
               </div>
             )}
-            <div style={{ marginTop:'20px', textAlign:'center' }}>
-              <button onClick={() => setSelectedEntry(null)} style={{ background:'transparent', border:'1px solid rgba(45,125,210,0.3)', color:'#a8c4e0', borderRadius:'6px', padding:'8px 20px', fontSize:'0.75rem', cursor:'pointer' }}>
-                Cerrar ✕
-              </button>
+            <div style={{ marginTop:'24px', textAlign:'center' }}>
+              <button onClick={() => setSelectedEntry(null)} style={{ background:'transparent', border:'1px solid rgba(45,125,210,0.3)', color:'#a8c4e0', borderRadius:'6px', padding:'8px 20px', fontSize:'0.75rem', cursor:'pointer' }}>Cerrar ✕</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* NAV */}
       <nav style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 28px', background:'rgba(10,22,40,0.97)', borderBottom:'1px solid rgba(45,125,210,0.3)', position:'sticky', top:0, zIndex:100 }}>
         <div>
           <div style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:900 }}>DON <span style={{ color:'#c8863a' }}>LEÓN</span></div>
