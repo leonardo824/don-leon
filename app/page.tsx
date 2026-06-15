@@ -1,7 +1,6 @@
-cat > app/page.tsx << 'ENDOFFILE'
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { Entry, Message } from '@/lib/supabase'
@@ -23,6 +22,7 @@ export default function Home() {
   const [totalMiles, setTotalMiles] = useState(0)
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const entriesRef = useRef<Entry[]>([])
+  const markersRef = useRef<mapboxgl.Marker[]>([])
 
   useEffect(() => {
     fetch('/api/entries')
@@ -45,15 +45,6 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const entry = (e as CustomEvent).detail as Entry
-      setSelectedEntry(entry)
-    }
-    window.addEventListener('open-entry', handler)
-    return () => window.removeEventListener('open-entry', handler)
-  }, [])
-
-  useEffect(() => {
     if (!mapRef.current || mapInstance.current) return
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
     if (!token) return
@@ -64,7 +55,6 @@ export default function Home() {
       center: [-90, 15],
       zoom: 3.5,
     })
-    map.on('load', () => { if (entriesRef.current.length > 0) drawRoute(map, entriesRef.current) })
     mapInstance.current = map
     return () => { map.remove(); mapInstance.current = null }
   }, [])
@@ -72,13 +62,19 @@ export default function Home() {
   useEffect(() => {
     if (!mapInstance.current || entries.length === 0) return
     const map = mapInstance.current
-    if (map.loaded()) drawRoute(map, entries)
-    else map.on('load', () => drawRoute(map, entries))
+    const doRoute = () => drawRoute(map, entries)
+    if (map.loaded()) doRoute()
+    else map.on('load', doRoute)
   }, [entries])
 
   function drawRoute(map: mapboxgl.Map, entries: Entry[]) {
+    // Remove existing markers
+    markersRef.current.forEach(m => m.remove())
+    markersRef.current = []
+
     const sorted = [...entries].sort((a, b) => a.day_number - b.day_number)
     const coords: [number, number][] = sorted.map(e => [e.lng, e.lat])
+
     if (map.getSource('route')) {
       (map.getSource('route') as mapboxgl.GeoJSONSource).setData({
         type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {}
@@ -93,22 +89,29 @@ export default function Home() {
         paint: { 'line-color': '#c8863a', 'line-width': 2.5, 'line-dasharray': [3, 2] }
       })
     }
+
     sorted.forEach((entry, i) => {
       const isLast = i === sorted.length - 1
       const el = document.createElement('div')
-      el.style.cssText = `width:${isLast?'20px':'12px'};height:${isLast?'20px':'12px'};border-radius:50%;background:${isLast?'#4ade80':'#c8863a'};border:2px solid rgba(255,255,255,0.6);cursor:pointer;box-shadow:0 0 ${isLast?'12px':'6px'} ${isLast?'#4ade80':'#c8863a'};transition:transform 0.15s;`
-      el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.4)' })
+      el.style.cssText = `width:${isLast?'22px':'13px'};height:${isLast?'22px':'13px'};border-radius:50%;background:${isLast?'#4ade80':'#c8863a'};border:2px solid rgba(255,255,255,0.7);cursor:pointer;box-shadow:0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'};transition:transform 0.15s;`
+      el.title = entry.title
+
+      el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.5)' })
       el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)' })
-      el.addEventListener('click', () => {
-        const found = entriesRef.current.find(e => e.id === entry.id)
-        if (found) {
-          window.dispatchEvent(new CustomEvent('open-entry', { detail: found }))
-        }
+      el.addEventListener('click', (e) => {
+        e.stopPropagation()
+        // Find the entry directly from the ref
+        const found = entriesRef.current.find(en => en.id === entry.id)
+        if (found) setSelectedEntry(found)
       })
-      new mapboxgl.Marker({ element: el })
+
+      const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([entry.lng, entry.lat])
         .addTo(map)
+
+      markersRef.current.push(marker)
     })
+
     const last = sorted[sorted.length - 1]
     map.flyTo({ center: [last.lng, last.lat], zoom: 4, duration: 2000 })
   }
@@ -133,7 +136,7 @@ export default function Home() {
   return (
     <div style={{ minHeight:'100vh', background:'#0a1628', fontFamily:'Inter,sans-serif', color:'#f0e6c8', display:'flex', flexDirection:'column' }}>
 
-      {/* MODAL ENTRADA COMPLETA */}
+      {/* MODAL */}
       {selectedEntry && (
         <div onClick={() => setSelectedEntry(null)}
           style={{ position:'fixed', inset:0, background:'rgba(4,10,22,0.88)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(5px)', padding:'20px' }}>
@@ -325,9 +328,7 @@ export default function Home() {
       <style>{`
         @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.4)}}
         .mapboxgl-popup-content{background:#0d2545!important;border:1px solid rgba(45,125,210,0.3)!important;color:#f0e6c8!important;border-radius:8px!important;padding:8px!important}
-        .mapboxgl-popup-tip{border-top-color:#0d2545!important}
       `}</style>
     </div>
   )
 }
-ENDOFFILE
