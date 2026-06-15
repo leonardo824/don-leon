@@ -129,7 +129,7 @@ export default function Home() {
       `
 
       dot.addEventListener('mouseenter', (e) => {
-        dot.style.transform = 'scale(1.55)'
+       
         dot.style.boxShadow = `0 0 ${isLast?'20px':'14px'} ${glow}`
         tooltip.innerHTML = `
           <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.12em;color:#a8c4e0;margin-bottom:3px;font-family:Inter,sans-serif">Día ${entry.day_number}</div>
@@ -151,7 +151,7 @@ export default function Home() {
       })
 
       dot.addEventListener('mouseleave', () => {
-        dot.style.transform = 'scale(1)'
+        
         dot.style.boxShadow = `0 0 ${isLast?'12px':'6px'} ${glow}`
         tooltip.style.opacity = '0'
       })
