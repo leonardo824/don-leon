@@ -93,31 +93,55 @@ export default function Home() {
       const isLast = i === sorted.length - 1
       const size = isLast ? 22 : 13
 
-      // Wrapper que Mapbox mueve — no aplicar transform aquí
       const wrapper = document.createElement('div')
-      wrapper.style.cssText = `width:${size}px;height:${size}px;cursor:pointer;`
+      wrapper.style.cssText = `width:${size}px;height:${size}px;cursor:pointer;position:relative;`
 
-      // Dot interior — aquí sí aplicamos el scale con transform-origin centrado
       const dot = document.createElement('div')
       dot.style.cssText = `
-        width:${size}px;
-        height:${size}px;
-        border-radius:50%;
+        width:${size}px;height:${size}px;border-radius:50%;
         background:${isLast?'#4ade80':'#c8863a'};
         border:2px solid rgba(255,255,255,0.7);
         box-shadow:0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'};
         transform-origin:center center;
         transition:transform 0.15s, box-shadow 0.15s;
       `
+
+      // Mini tooltip
+      const tooltip = document.createElement('div')
+      tooltip.style.cssText = `
+        position:absolute;
+        bottom:calc(100% + 10px);
+        left:50%;
+        transform:translateX(-50%);
+        background:rgba(8,18,38,0.95);
+        border:1px solid rgba(45,125,210,0.45);
+        border-radius:8px;
+        padding:8px 12px;
+        white-space:nowrap;
+        pointer-events:none;
+        opacity:0;
+        transition:opacity 0.18s;
+        box-shadow:0 6px 20px rgba(0,0,0,0.5);
+        z-index:999;
+      `
+      tooltip.innerHTML = `
+        <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.12em;color:#a8c4e0;margin-bottom:3px;font-family:Inter,sans-serif">Día ${entry.day_number}</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#f0e6c8;font-family:'Playfair Display',serif;margin-bottom:4px;max-width:180px;white-space:normal;line-height:1.2">${entry.title}</div>
+        ${entry.wind_speed ? `<div style="font-size:0.68rem;color:#7eb8f7;font-family:monospace">💨 ${entry.wind_speed}kts ${entry.wind_dir||''}</div>` : ''}
+      `
+
       wrapper.appendChild(dot)
+      wrapper.appendChild(tooltip)
 
       wrapper.addEventListener('mouseenter', () => {
-        dot.style.transform = 'scale(1.6)'
+        dot.style.transform = 'scale(1.5)'
         dot.style.boxShadow = `0 0 ${isLast?'20px':'12px'} ${isLast?'#4ade80':'#c8863a'}`
+        tooltip.style.opacity = '1'
       })
       wrapper.addEventListener('mouseleave', () => {
         dot.style.transform = 'scale(1)'
         dot.style.boxShadow = `0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'}`
+        tooltip.style.opacity = '0'
       })
       wrapper.addEventListener('click', (e) => {
         e.stopPropagation()
@@ -343,7 +367,6 @@ export default function Home() {
       </div>
       <style>{`
         @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.4)}}
-        .mapboxgl-popup-content{background:#0d2545!important;border:1px solid rgba(45,125,210,0.3)!important;color:#f0e6c8!important;border-radius:8px!important;padding:8px!important}
       `}</style>
     </div>
   )
