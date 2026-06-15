@@ -23,6 +23,7 @@ export default function Home() {
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const entriesRef = useRef<Entry[]>([])
   const markersRef = useRef<mapboxgl.Marker[]>([])
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     fetch('/api/entries')
@@ -70,6 +71,7 @@ export default function Home() {
   function drawRoute(map: mapboxgl.Map, entries: Entry[]) {
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
+    if (tooltipRef.current) { tooltipRef.current.remove(); tooltipRef.current = null }
 
     const sorted = [...entries].sort((a, b) => a.day_number - b.day_number)
     const coords: [number, number][] = sorted.map(e => [e.lng, e.lat])
@@ -89,67 +91,80 @@ export default function Home() {
       })
     }
 
+    // Tooltip flotante — uno solo, lo movemos con JS
+    const tooltip = document.createElement('div')
+    tooltip.style.cssText = `
+      position:fixed;
+      background:rgba(8,18,38,0.96);
+      border:1px solid rgba(45,125,210,0.5);
+      border-radius:8px;
+      padding:8px 12px;
+      pointer-events:none;
+      opacity:0;
+      transition:opacity 0.15s;
+      box-shadow:0 6px 20px rgba(0,0,0,0.5);
+      z-index:999;
+      min-width:140px;
+    `
+    document.body.appendChild(tooltip)
+    tooltipRef.current = tooltip
+
     sorted.forEach((entry, i) => {
       const isLast = i === sorted.length - 1
-      const size = isLast ? 22 : 13
+      const size = isLast ? 20 : 12
+      const color = isLast ? '#4ade80' : '#c8863a'
+      const glow = isLast ? '#4ade80' : '#c8863a'
 
-      const wrapper = document.createElement('div')
-      wrapper.style.cssText = `width:${size}px;height:${size}px;cursor:pointer;position:relative;`
-
+      // Dot simple — es el elemento del marker directamente
       const dot = document.createElement('div')
       dot.style.cssText = `
-        width:${size}px;height:${size}px;border-radius:50%;
-        background:${isLast?'#4ade80':'#c8863a'};
-        border:2px solid rgba(255,255,255,0.7);
-        box-shadow:0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'};
-        transform-origin:center center;
+        width:${size}px;
+        height:${size}px;
+        border-radius:50%;
+        background:${color};
+        border:2px solid rgba(255,255,255,0.75);
+        box-shadow:0 0 ${isLast?'12px':'6px'} ${glow};
+        cursor:pointer;
         transition:transform 0.15s, box-shadow 0.15s;
       `
 
-      // Mini tooltip
-      const tooltip = document.createElement('div')
-      tooltip.style.cssText = `
-        position:absolute;
-        bottom:calc(100% + 10px);
-        left:50%;
-        transform:translateX(-50%);
-        background:rgba(8,18,38,0.95);
-        border:1px solid rgba(45,125,210,0.45);
-        border-radius:8px;
-        padding:8px 12px;
-        white-space:nowrap;
-        pointer-events:none;
-        opacity:0;
-        transition:opacity 0.18s;
-        box-shadow:0 6px 20px rgba(0,0,0,0.5);
-        z-index:999;
-      `
-      tooltip.innerHTML = `
-        <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.12em;color:#a8c4e0;margin-bottom:3px;font-family:Inter,sans-serif">Día ${entry.day_number}</div>
-        <div style="font-size:0.82rem;font-weight:700;color:#f0e6c8;font-family:'Playfair Display',serif;margin-bottom:4px;max-width:180px;white-space:normal;line-height:1.2">${entry.title}</div>
-        ${entry.wind_speed ? `<div style="font-size:0.68rem;color:#7eb8f7;font-family:monospace">💨 ${entry.wind_speed}kts ${entry.wind_dir||''}</div>` : ''}
-      `
-
-      wrapper.appendChild(dot)
-      wrapper.appendChild(tooltip)
-
-      wrapper.addEventListener('mouseenter', () => {
-        dot.style.transform = 'scale(1.5)'
-        dot.style.boxShadow = `0 0 ${isLast?'20px':'12px'} ${isLast?'#4ade80':'#c8863a'}`
+      dot.addEventListener('mouseenter', (e) => {
+        dot.style.transform = 'scale(1.55)'
+        dot.style.boxShadow = `0 0 ${isLast?'20px':'14px'} ${glow}`
+        tooltip.innerHTML = `
+          <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.12em;color:#a8c4e0;margin-bottom:3px;font-family:Inter,sans-serif">Día ${entry.day_number}</div>
+          <div style="font-size:0.82rem;font-weight:700;color:#f0e6c8;font-family:'Playfair Display',serif;margin-bottom:${entry.wind_speed?'4px':'0'};line-height:1.25">${entry.title}</div>
+          ${entry.wind_speed ? `<div style="font-size:0.68rem;color:#7eb8f7;font-family:monospace">💨 ${entry.wind_speed}kts ${entry.wind_dir||''}</div>` : ''}
+          <div style="font-size:0.6rem;color:rgba(126,184,247,0.5);margin-top:4px;font-family:Inter,sans-serif">Click para leer →</div>
+        `
         tooltip.style.opacity = '1'
+        // Position tooltip above cursor
+        const rect = dot.getBoundingClientRect()
+        tooltip.style.left = (rect.left + rect.width/2 - tooltip.offsetWidth/2) + 'px'
+        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px'
       })
-      wrapper.addEventListener('mouseleave', () => {
+
+      dot.addEventListener('mousemove', () => {
+        const rect = dot.getBoundingClientRect()
+        tooltip.style.left = (rect.left + rect.width/2 - tooltip.offsetWidth/2) + 'px'
+        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px'
+      })
+
+      dot.addEventListener('mouseleave', () => {
         dot.style.transform = 'scale(1)'
-        dot.style.boxShadow = `0 0 ${isLast?'14px':'7px'} ${isLast?'#4ade80':'#c8863a'}`
+        dot.style.boxShadow = `0 0 ${isLast?'12px':'6px'} ${glow}`
         tooltip.style.opacity = '0'
       })
-      wrapper.addEventListener('click', (e) => {
+
+      dot.addEventListener('click', (e) => {
         e.stopPropagation()
+        tooltip.style.opacity = '0'
         const found = entriesRef.current.find(en => en.id === entry.id)
         if (found) setSelectedEntry(found)
       })
 
-      const marker = new mapboxgl.Marker({ element: wrapper, anchor: 'center' })
+      // Usamos el dot directamente como elemento del marker, sin wrapper
+      const marker = new mapboxgl.Marker({ element: dot, anchor: 'center' })
         .setLngLat([entry.lng, entry.lat])
         .addTo(map)
 
