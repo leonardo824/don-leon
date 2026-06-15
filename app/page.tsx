@@ -1,3 +1,4 @@
+cat > app/page.tsx << 'ENDOFFILE'
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -21,6 +22,7 @@ export default function Home() {
   const [msgSent, setMsgSent] = useState(false)
   const [totalMiles, setTotalMiles] = useState(0)
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
+  const entriesRef = useRef<Entry[]>([])
 
   useEffect(() => {
     fetch('/api/entries')
@@ -28,6 +30,7 @@ export default function Home() {
       .then((res) => {
         const data: Entry[] = Array.isArray(res) ? res : []
         setEntries(data)
+        entriesRef.current = data
         const miles = data.reduce((sum, e) => sum + (parseFloat(e.miles_today || '0') || 0), 0)
         setTotalMiles(Math.round(miles))
         setLoadingEntries(false)
@@ -42,6 +45,15 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    const handler = (e: Event) => {
+      const entry = (e as CustomEvent).detail as Entry
+      setSelectedEntry(entry)
+    }
+    window.addEventListener('open-entry', handler)
+    return () => window.removeEventListener('open-entry', handler)
+  }, [])
+
+  useEffect(() => {
     if (!mapRef.current || mapInstance.current) return
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
     if (!token) return
@@ -52,7 +64,7 @@ export default function Home() {
       center: [-90, 15],
       zoom: 3.5,
     })
-    map.on('load', () => { if (entries.length > 0) drawRoute(map, entries) })
+    map.on('load', () => { if (entriesRef.current.length > 0) drawRoute(map, entriesRef.current) })
     mapInstance.current = map
     return () => { map.remove(); mapInstance.current = null }
   }, [])
@@ -84,16 +96,17 @@ export default function Home() {
     sorted.forEach((entry, i) => {
       const isLast = i === sorted.length - 1
       const el = document.createElement('div')
-      el.style.cssText = `width:${isLast?'20px':'12px'};height:${isLast?'20px':'12px'};border-radius:50%;background:${isLast?'#4ade80':'#c8863a'};border:2px solid rgba(255,255,255,0.6);cursor:pointer;box-shadow:0 0 ${isLast?'12px':'6px'} ${isLast?'#4ade80':'#c8863a'};`
+      el.style.cssText = `width:${isLast?'20px':'12px'};height:${isLast?'20px':'12px'};border-radius:50%;background:${isLast?'#4ade80':'#c8863a'};border:2px solid rgba(255,255,255,0.6);cursor:pointer;box-shadow:0 0 ${isLast?'12px':'6px'} ${isLast?'#4ade80':'#c8863a'};transition:transform 0.15s;`
+      el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.4)' })
+      el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)' })
+      el.addEventListener('click', () => {
+        const found = entriesRef.current.find(e => e.id === entry.id)
+        if (found) {
+          window.dispatchEvent(new CustomEvent('open-entry', { detail: found }))
+        }
+      })
       new mapboxgl.Marker({ element: el })
         .setLngLat([entry.lng, entry.lat])
-        .setPopup(new mapboxgl.Popup({ offset: 15 }).setHTML(`
-          <div style="font-family:Inter,sans-serif;padding:4px;background:#0d2545;border-radius:6px">
-            <div style="font-size:0.65rem;color:#a8c4e0;text-transform:uppercase">Día ${entry.day_number}</div>
-            <div style="font-weight:700;color:#f0e6c8;margin:4px 0">${entry.title}</div>
-            <div style="font-size:0.75rem;color:#7eb8f7">${entry.location_name || ''}</div>
-          </div>
-        `))
         .addTo(map)
     })
     const last = sorted[sorted.length - 1]
@@ -118,38 +131,51 @@ export default function Home() {
   const progress = Math.round((totalMiles / 35834) * 100)
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a1628', fontFamily: 'Inter, sans-serif', color: '#f0e6c8', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight:'100vh', background:'#0a1628', fontFamily:'Inter,sans-serif', color:'#f0e6c8', display:'flex', flexDirection:'column' }}>
 
-      {/* MODAL */}
+      {/* MODAL ENTRADA COMPLETA */}
       {selectedEntry && (
         <div onClick={() => setSelectedEntry(null)}
-          style={{ position:'fixed', inset:0, background:'rgba(4,10,22,0.85)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(4px)', padding:'20px' }}>
+          style={{ position:'fixed', inset:0, background:'rgba(4,10,22,0.88)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(5px)', padding:'20px' }}>
           <div onClick={e => e.stopPropagation()}
-            style={{ background:'#0d2545', border:'1px solid rgba(45,125,210,0.3)', borderRadius:'14px', width:'100%', maxWidth:'600px', maxHeight:'88vh', overflowY:'auto', padding:'32px', position:'relative' }}>
+            style={{ background:'#0d2545', border:'1px solid rgba(45,125,210,0.35)', borderRadius:'14px', width:'100%', maxWidth:'620px', maxHeight:'88vh', overflowY:'auto', padding:'36px', position:'relative', boxShadow:'0 30px 80px rgba(0,0,0,0.6)' }}>
             <button onClick={() => setSelectedEntry(null)}
               style={{ position:'absolute', top:'16px', right:'18px', background:'transparent', border:'none', color:'#a8c4e0', fontSize:'1.4rem', cursor:'pointer', lineHeight:1 }}>✕</button>
             <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.14em', color:'#a8c4e0', marginBottom:'6px' }}>Día {selectedEntry.day_number} del viaje</div>
-            <div style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.6rem', fontWeight:700, color:'#f0e6c8', marginBottom:'6px', lineHeight:1.25 }}>{selectedEntry.title}</div>
-            <div style={{ display:'flex', gap:'12px', marginBottom:'20px', flexWrap:'wrap' }}>
+            <div style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.65rem', fontWeight:700, color:'#f0e6c8', marginBottom:'8px', lineHeight:1.25 }}>{selectedEntry.title}</div>
+            <div style={{ display:'flex', gap:'12px', marginBottom:'22px', flexWrap:'wrap', alignItems:'center' }}>
               {selectedEntry.location_name && <span style={{ fontSize:'0.72rem', color:'#c8863a' }}>📍 {selectedEntry.location_name}</span>}
-              <span style={{ fontSize:'0.68rem', color:'#a8c4e0', fontFamily:'monospace' }}>{format(new Date(selectedEntry.created_at), "d MMM yyyy", { locale: es })}</span>
+              <span style={{ fontSize:'0.68rem', color:'#a8c4e0', fontFamily:'monospace' }}>{format(new Date(selectedEntry.created_at), "d 'de' MMMM yyyy", { locale: es })}</span>
             </div>
-            <div style={{ fontFamily:'"Courier Prime",monospace', fontSize:'0.92rem', color:'#c8d8e8', lineHeight:1.85, fontStyle:'italic', marginBottom:'24px', whiteSpace:'pre-line' }}>
+            <div style={{ fontFamily:'"Courier Prime",monospace', fontSize:'0.95rem', color:'#c8d8e8', lineHeight:1.9, fontStyle:'italic', marginBottom:'26px', whiteSpace:'pre-line', borderLeft:'3px solid rgba(200,134,58,0.3)', paddingLeft:'16px' }}>
               {selectedEntry.body}
             </div>
-            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'20px' }}>
-              {selectedEntry.wind_speed && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'4px 10px', fontSize:'0.68rem', color:'#7eb8f7' }}>💨 {selectedEntry.wind_speed}kts {selectedEntry.wind_dir}</span>}
-              {selectedEntry.wave_height && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'4px 10px', fontSize:'0.68rem', color:'#7eb8f7' }}>🌊 {selectedEntry.wave_height}m</span>}
-              {selectedEntry.temperature && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'4px 10px', fontSize:'0.68rem', color:'#7eb8f7' }}>🌡️ {selectedEntry.temperature}°C</span>}
-              {selectedEntry.weather && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'4px 10px', fontSize:'0.68rem', color:'#7eb8f7' }}>☁️ {selectedEntry.weather}</span>}
-              {selectedEntry.heading && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'4px 10px', fontSize:'0.68rem', color:'#7eb8f7' }}>🧭 {selectedEntry.heading}°</span>}
-              {selectedEntry.miles_today && selectedEntry.miles_today !== '0' && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'4px 10px', fontSize:'0.68rem', color:'#7eb8f7' }}>⚓ {selectedEntry.miles_today}nm</span>}
-            </div>
-            {selectedEntry.photos?.length > 0 && (
-              <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(selectedEntry.photos.length,3)},1fr)`, gap:'8px' }}>
-                {selectedEntry.photos.map((url,i) => <img key={i} src={url} alt="" style={{ width:'100%', aspectRatio:'1', objectFit:'cover', borderRadius:'8px' }} />)}
+            {(selectedEntry.wind_speed || selectedEntry.wave_height || selectedEntry.temperature || selectedEntry.weather || selectedEntry.heading || selectedEntry.miles_today) && (
+              <div style={{ background:'rgba(45,125,210,0.06)', border:'1px solid rgba(45,125,210,0.15)', borderRadius:'10px', padding:'14px', marginBottom:'20px' }}>
+                <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.12em', color:'#a8c4e0', marginBottom:'10px' }}>Condiciones náuticas</div>
+                <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                  {selectedEntry.wind_speed && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'5px 11px', fontSize:'0.72rem', color:'#7eb8f7' }}>💨 {selectedEntry.wind_speed}kts {selectedEntry.wind_dir}</span>}
+                  {selectedEntry.wave_height && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'5px 11px', fontSize:'0.72rem', color:'#7eb8f7' }}>🌊 {selectedEntry.wave_height}m</span>}
+                  {selectedEntry.temperature && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'5px 11px', fontSize:'0.72rem', color:'#7eb8f7' }}>🌡️ {selectedEntry.temperature}°C</span>}
+                  {selectedEntry.weather && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'5px 11px', fontSize:'0.72rem', color:'#7eb8f7' }}>☁️ {selectedEntry.weather}</span>}
+                  {selectedEntry.heading && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'5px 11px', fontSize:'0.72rem', color:'#7eb8f7' }}>🧭 {selectedEntry.heading}°</span>}
+                  {selectedEntry.miles_today && selectedEntry.miles_today !== '0' && <span style={{ background:'rgba(45,125,210,0.12)', border:'1px solid rgba(45,125,210,0.2)', borderRadius:'5px', padding:'5px 11px', fontSize:'0.72rem', color:'#7eb8f7' }}>⚓ {selectedEntry.miles_today}nm</span>}
+                </div>
               </div>
             )}
+            {selectedEntry.photos?.length > 0 && (
+              <div>
+                <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.12em', color:'#a8c4e0', marginBottom:'10px' }}>Fotos</div>
+                <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(selectedEntry.photos.length,3)},1fr)`, gap:'8px' }}>
+                  {selectedEntry.photos.map((url,i) => <img key={i} src={url} alt="" style={{ width:'100%', aspectRatio:'1', objectFit:'cover', borderRadius:'8px', cursor:'pointer' }} onClick={() => window.open(url,'_blank')} />)}
+                </div>
+              </div>
+            )}
+            <div style={{ marginTop:'20px', textAlign:'center' }}>
+              <button onClick={() => setSelectedEntry(null)} style={{ background:'transparent', border:'1px solid rgba(45,125,210,0.3)', color:'#a8c4e0', borderRadius:'6px', padding:'8px 20px', fontSize:'0.75rem', cursor:'pointer' }}>
+                Cerrar ✕
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -304,3 +330,4 @@ export default function Home() {
     </div>
   )
 }
+ENDOFFILE
